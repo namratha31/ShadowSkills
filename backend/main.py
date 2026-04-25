@@ -34,7 +34,7 @@ app.add_middleware(
 GROQ_API_KEY         = os.getenv("GROQ_API_KEY", "").strip()
 GITHUB_TOKEN         = os.getenv("GITHUB_TOKEN", "").strip()
 LINKEDIN_API_KEY     = os.getenv("LINKEDIN_API_KEY", "").strip()
-CRON_INTERVAL_HOURS  = int(os.getenv("CRON_INTERVAL_HOURS", "6"))
+CRON_INTERVAL_HOURS  = int(os.getenv("CRON_INTERVAL_HOURS", "24"))
 
 if not GROQ_API_KEY:
     raise Exception("Missing GROQ_API_KEY in .env")
@@ -510,3 +510,231 @@ async def trigger_cron_now(background_tasks: BackgroundTasks):
     """Manually trigger a re-analysis run right now (useful for testing)."""
     background_tasks.add_task(cron_reanalyze_all)
     return {"message": "Cron run triggered", "tracked_users": list(tracked_users.keys())}
+
+
+# ═══════════════════════════════════════════════════════
+#  MOCK DATA — LinkedIn & Unstop (demo / no real API key)
+#  These return realistic fake data keyed to the username
+#  so every user gets a unique-looking profile.
+# ═══════════════════════════════════════════════════════
+
+import hashlib, random as _random
+
+def _seed(username: str) -> _random.Random:
+    """Deterministic RNG seeded from username — same user always gets same mock data."""
+    h = int(hashlib.md5(username.encode()).hexdigest(), 16)
+    r = _random.Random(h)
+    return r
+
+
+@app.get("/mock/linkedin/{username}")
+def mock_linkedin(username: str):
+    """
+    Returns realistic mock LinkedIn data for demo purposes.
+    Data is deterministic — same username always returns same profile.
+    """
+    r = _seed(username)
+
+    hackathon_pool = [
+        {"name": "Smart India Hackathon 2024", "result": "Finalist", "date": "Dec 2024"},
+        {"name": "HackWithInfy", "result": "Top 10", "date": "Oct 2024"},
+        {"name": "Athernex DSCE", "result": "Winner", "date": "Apr 2025"},
+        {"name": "HackNITR 5.0", "result": "Participant", "date": "Feb 2025"},
+        {"name": "Flipkart GRiD 6.0", "result": "Shortlisted", "date": "Aug 2024"},
+        {"name": "Unstop Hackathon", "result": "Finalist", "date": "Jan 2025"},
+    ]
+    summit_pool = [
+        "TechSyncc AI Summit 2025",
+        "Google I/O Extended Bengaluru",
+        "GitHub Universe Webinar",
+        "AWS Cloud Day India",
+        "PyConf Hyderabad 2024",
+    ]
+    cert_pool = [
+        {"name": "AWS Cloud Practitioner", "issuer": "Amazon", "date": "Mar 2025"},
+        {"name": "Google Data Analytics", "issuer": "Google", "date": "Nov 2024"},
+        {"name": "Meta Front-End Developer", "issuer": "Meta", "date": "Jan 2025"},
+        {"name": "Postman API Fundamentals", "issuer": "Postman", "date": "Feb 2025"},
+        {"name": "GitHub Foundations", "issuer": "GitHub", "date": "Dec 2024"},
+    ]
+    skill_pool = [
+        "Python", "React", "FastAPI", "Node.js", "Machine Learning",
+        "SQL", "Docker", "Git", "REST APIs", "System Design",
+    ]
+
+    # Days since last post — affects visibility score
+    days_since_post = r.randint(1, 30)
+    visibility_score = max(20, 100 - (days_since_post * 3))
+
+    picked_hackathons = r.sample(hackathon_pool, k=r.randint(2, 4))
+    picked_summits    = r.sample(summit_pool, k=r.randint(1, 3))
+    picked_certs      = r.sample(cert_pool, k=r.randint(2, 3))
+    picked_skills     = r.sample(skill_pool, k=6)
+    connections       = r.randint(180, 720)
+    post_count        = r.randint(3, 28)
+
+    reminder = None
+    if days_since_post > 7:
+        reminder = {
+            "trigger": True,
+            "message": f"You haven't posted in {days_since_post} days. Your visibility dropped {min(days_since_post * 3, 60)}%. Post something today to stay on recruiters' radar.",
+            "suggested_post": f"Just wrapped up a new feature on {username}'s latest project 🚀 Loving the grind. #buildinpublic #coding",
+        }
+    else:
+        reminder = {"trigger": False, "message": "Great job staying active! Keep posting."}
+
+    return {
+        "source": "mock",
+        "profile": {
+            "name": username.replace("-", " ").title(),
+            "headline": r.choice([
+                "Full Stack Developer | Open to Opportunities",
+                "CS Student @ SKIT | Building cool stuff",
+                "SDE Intern | React · Python · FastAPI",
+                "Final Year CSE | Hackathon Enthusiast",
+            ]),
+            "connections": connections,
+            "location": r.choice(["Bengaluru, IN", "Hyderabad, IN", "Chennai, IN", "Pune, IN"]),
+            "post_count_last_30_days": post_count,
+            "days_since_last_post": days_since_post,
+        },
+        "visibility_score": visibility_score,
+        "activity_status": "active" if days_since_post <= 7 else "declining",
+        "hackathons": picked_hackathons,
+        "summits_attended": picked_summits,
+        "certifications": picked_certs,
+        "top_skills": picked_skills,
+        "confidence_boost": len([h for h in picked_hackathons if h["result"] in ["Winner", "Finalist", "Top 10"]]) * 8,
+        "reminder": reminder,
+    }
+
+
+@app.get("/mock/unstop/{username}")
+def mock_unstop(username: str):
+    """
+    Returns realistic mock Unstop job/internship listings matched to the user.
+    In production, replace with real Unstop API + keyword extraction.
+    """
+    r = _seed(username)
+
+    all_jobs = [
+        {
+            "id": "UST001",
+            "title": "Backend Engineer Intern",
+            "company": "Razorpay",
+            "type": "Internship",
+            "duration": "6 months",
+            "stipend": "₹25,000/mo",
+            "location": "Bengaluru (Hybrid)",
+            "skills": ["Python", "FastAPI", "PostgreSQL", "REST APIs"],
+            "deadline": "10 May 2026",
+            "applicants": 312,
+            "match": 94,
+        },
+        {
+            "id": "UST002",
+            "title": "Full Stack Developer",
+            "company": "Zepto",
+            "type": "Full-time",
+            "duration": None,
+            "stipend": "₹12-18 LPA",
+            "location": "Mumbai (On-site)",
+            "skills": ["React", "Node.js", "MongoDB", "Docker"],
+            "deadline": "15 May 2026",
+            "applicants": 876,
+            "match": 88,
+        },
+        {
+            "id": "UST003",
+            "title": "ML Engineer Intern",
+            "company": "Sarvam AI",
+            "type": "Internship",
+            "duration": "3 months",
+            "stipend": "₹30,000/mo",
+            "location": "Bengaluru (Remote)",
+            "skills": ["Python", "TensorFlow", "NLP", "Git"],
+            "deadline": "5 May 2026",
+            "applicants": 541,
+            "match": 81,
+        },
+        {
+            "id": "UST004",
+            "title": "SDE-1",
+            "company": "CRED",
+            "type": "Full-time",
+            "duration": None,
+            "stipend": "₹15-20 LPA",
+            "location": "Bengaluru (Hybrid)",
+            "skills": ["Java", "Spring Boot", "MySQL", "System Design"],
+            "deadline": "20 May 2026",
+            "applicants": 1203,
+            "match": 76,
+        },
+        {
+            "id": "UST005",
+            "title": "DevOps Intern",
+            "company": "HashedIn by Deloitte",
+            "type": "Internship",
+            "duration": "6 months",
+            "stipend": "₹20,000/mo",
+            "location": "Bengaluru (On-site)",
+            "skills": ["Docker", "Kubernetes", "CI/CD", "Linux"],
+            "deadline": "8 May 2026",
+            "applicants": 228,
+            "match": 71,
+        },
+        {
+            "id": "UST006",
+            "title": "React Developer",
+            "company": "ShareChat",
+            "type": "Full-time",
+            "duration": None,
+            "stipend": "₹10-14 LPA",
+            "location": "Remote",
+            "skills": ["React", "TypeScript", "Redux", "REST APIs"],
+            "deadline": "25 May 2026",
+            "applicants": 445,
+            "match": 68,
+        },
+    ]
+
+    # Shuffle order slightly per user so it looks personalised
+    r.shuffle(all_jobs)
+    # Re-sort by match (stays realistic)
+    all_jobs.sort(key=lambda j: j["match"], reverse=True)
+
+    # Simulate auto-apply keywords extracted from github
+    extracted_keywords = r.sample(
+        ["Python", "React", "FastAPI", "Git", "REST APIs", "Node.js", "Docker", "SQL"],
+        k=4
+    )
+
+    return {
+        "source": "mock",
+        "extracted_keywords": extracted_keywords,
+        "total_matches": len(all_jobs),
+        "listings": all_jobs,
+        "auto_apply_ready": True,
+        "note": "Auto-apply extracts skill keywords from your GitHub profile and fills application forms automatically.",
+    }
+
+
+@app.get("/mock/full/{username}")
+def mock_full_profile(username: str):
+    """
+    One call returns BOTH LinkedIn + Unstop mock data combined.
+    Use this in the frontend for the demo — single fast request.
+    """
+    linkedin = mock_linkedin(username)
+    unstop   = mock_unstop(username)
+
+    # Merge confidence score boost from LinkedIn hackathons into skills
+    confidence_boost = linkedin.get("confidence_boost", 0)
+
+    return {
+        "username": username,
+        "linkedin": linkedin,
+        "unstop": unstop,
+        "confidence_boost_from_linkedin": confidence_boost,
+        "message": "Mock data for demo — LinkedIn & Unstop APIs pending approval",
+    }

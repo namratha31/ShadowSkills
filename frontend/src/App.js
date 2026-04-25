@@ -1,24 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Radar, Bar } from "react-chartjs-2";
 import {
-  Chart as ChartJS,
-  RadialLinearScale,
-  PointElement,
-  LineElement,
-  Filler,
-  Tooltip,
-  Legend,
-  CategoryScale,
-  LinearScale,
-  BarElement,
+  Chart as ChartJS, RadialLinearScale, PointElement, LineElement,
+  Filler, Tooltip, Legend, CategoryScale, LinearScale, BarElement,
 } from "chart.js";
 
-ChartJS.register(
-  RadialLinearScale, PointElement, LineElement, Filler,
-  Tooltip, Legend, CategoryScale, LinearScale, BarElement
-);
+ChartJS.register(RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
 
-const NAV = ["Dashboard", "Projects", "Insights", "Activity", "Career Suggestions", "Badges"];
+const API = "http://127.0.0.1:8000";
+const NAV = ["Dashboard", "Projects", "Insights", "Activity", "Career Suggestions", "Badges", "Time Breaker", "Cron Status"];
 
 const BADGES = [
   { icon: "🎯", title: "Focus Master", desc: "You maintain deep focus during coding sessions." },
@@ -37,50 +27,93 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [active, setActive] = useState("Dashboard");
+  const [cronStatus, setCronStatus] = useState(null);
+  const [cronLogs, setCronLogs] = useState([]);
+  const [trackedUsers, setTrackedUsers] = useState({});
+  const [triggerMsg, setTriggerMsg] = useState("");
 
   const analyze = async () => {
     if (!username) return;
-    setLoading(true);
-    setError("");
-    setData(null);
+    setLoading(true); setError(""); setData(null);
     try {
-      const res = await fetch(`http://127.0.0.1:8000/analyze/${username}`);
+      const res = await fetch(`${API}/analyze/${username}`);
       const json = await res.json();
       if (json.detail) throw new Error(json.detail);
       setData(json);
       setActive("Dashboard");
-    } catch (e) {
-      setError(e.message);
-    }
+      fetchCronData();
+    } catch (e) { setError(e.message); }
     setLoading(false);
   };
 
-  // Landing page
+  const fetchCronData = async () => {
+    try {
+      const [s, l, t] = await Promise.all([
+        fetch(`${API}/cron/status`).then(r => r.json()),
+        fetch(`${API}/cron/logs`).then(r => r.json()),
+        fetch(`${API}/tracked`).then(r => r.json()),
+      ]);
+      setCronStatus(s);
+      setCronLogs(l.logs || []);
+      setTrackedUsers(t.tracked_users || {});
+    } catch (e) { console.error(e); }
+  };
+
+  const triggerCron = async () => {
+    try {
+      const res = await fetch(`${API}/cron/trigger`, { method: "POST" });
+      const json = await res.json();
+      setTriggerMsg(json.message);
+      setTimeout(() => setTriggerMsg(""), 3000);
+      setTimeout(fetchCronData, 3000);
+    } catch (e) { setTriggerMsg("Failed to trigger"); }
+  };
+
+  useEffect(() => { fetchCronData(); }, []);
+
+  const s = { fontFamily: "Outfit, sans-serif" };
+
+  const card = (children, extra = {}) => (
+    <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.07)", ...extra }}>
+      {children}
+    </div>
+  );
+
+  const infoCard = (icon, title, desc, extra = {}) => (
+    <div key={title} style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: "16px 20px", marginBottom: 12, ...extra }}>
+      <h4 style={{ margin: 0, fontWeight: 700, color: "#111827", fontSize: 15 }}>{icon} {title}</h4>
+      <p style={{ margin: "6px 0 0", color: "#6b7280", fontSize: 14 }}>{desc}</p>
+    </div>
+  );
+
+  // Landing
   if (!data) {
     return (
-      <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #f0eeff 0%, #e8f4ff 100%)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: "Outfit, sans-serif" }}>
+      <div style={{ ...s, minHeight: "100vh", background: "linear-gradient(135deg, #f0eeff 0%, #e8f4ff 100%)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <div style={{ fontSize: 48, marginBottom: 8 }}>🕵️</div>
+          <div style={{ fontSize: 48 }}>🕵️</div>
           <h1 style={{ fontSize: 36, fontWeight: 800, color: "#4f46e5", margin: 0 }}>ShadowSkills</h1>
           <p style={{ color: "#6b7280", marginTop: 8 }}>Quietly tracking your growth in the background.</p>
         </div>
-        <div style={{ display: "flex", gap: 12 }}>
+        <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
           <input
-            style={{ padding: "10px 16px", borderRadius: 10, border: "1.5px solid #c4b5fd", fontSize: 15, width: 280, outline: "none", fontFamily: "Outfit, sans-serif" }}
+            style={{ ...s, padding: "10px 16px", borderRadius: 10, border: "1.5px solid #c4b5fd", fontSize: 15, width: 280, outline: "none" }}
             placeholder="Enter GitHub username"
             value={username}
             onChange={e => setUsername(e.target.value)}
             onKeyDown={e => e.key === "Enter" && analyze()}
           />
-          <button
-            onClick={analyze}
-            style={{ padding: "10px 24px", borderRadius: 10, background: "#4f46e5", color: "#fff", fontWeight: 700, fontSize: 15, border: "none", cursor: "pointer", fontFamily: "Outfit, sans-serif" }}
-          >
+          <button onClick={analyze} style={{ ...s, padding: "10px 24px", borderRadius: 10, background: "#4f46e5", color: "#fff", fontWeight: 700, fontSize: 15, border: "none", cursor: "pointer" }}>
             {loading ? "Analyzing..." : "Analyze"}
           </button>
         </div>
-        {loading && <p style={{ color: "#7c3aed", marginTop: 20 }}>Reading your digital footprint...</p>}
-        {error && <p style={{ color: "#ef4444", marginTop: 16 }}>{error}</p>}
+        {loading && <p style={{ color: "#7c3aed" }}>Reading your digital footprint...</p>}
+        {error && <p style={{ color: "#ef4444" }}>{error}</p>}
+        {cronStatus && (
+          <div style={{ marginTop: 24, background: "#fff", borderRadius: 12, padding: "12px 24px", fontSize: 13, color: "#6b7280", boxShadow: "0 1px 4px rgba(0,0,0,0.07)" }}>
+            🕐 Cron running: <strong>{cronStatus.scheduler_running ? "Yes" : "No"}</strong> · Tracked users: <strong>{cronStatus.tracked_user_count}</strong> · Interval: <strong>{cronStatus.interval_hours}h</strong>
+          </div>
+        )}
       </div>
     );
   }
@@ -90,45 +123,20 @@ export default function App() {
   const skillValues = data.skills?.map(s => s.confidence) || [];
 
   const radarData = {
-    labels: skillNames.length ? skillNames : ["Logic", "Speed", "Consistency", "Time Spent", "Focus", "Persistence"],
-    datasets: [{
-      label: "Skills",
-      data: skillValues.length ? skillValues : [80, 85, 78, 65, 90, 75],
-      backgroundColor: "rgba(124, 58, 237, 0.2)",
-      borderColor: "#7c3aed",
-      pointBackgroundColor: "#7c3aed",
-      borderWidth: 2,
-    }]
+    labels: skillNames.length ? skillNames : ["Logic", "Speed", "Persistence", "Focus", "Clarity", "Consistency"],
+    datasets: [{ label: "Skills", data: skillValues.length ? skillValues : [80, 85, 75, 90, 70, 78], backgroundColor: "rgba(124,58,237,0.2)", borderColor: "#7c3aed", pointBackgroundColor: "#7c3aed", borderWidth: 2 }]
   };
 
   const barData = {
     labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-    datasets: [{
-      label: "Commits",
-      data: [8, 15, 14, 6, 10, 8, 12],
-      backgroundColor: "#4f46e5",
-      borderRadius: 6,
-    }]
+    datasets: [{ label: "Commits", data: [8, 15, 14, 6, 10, 8, 12], backgroundColor: "#4f46e5", borderRadius: 6 }]
   };
 
-  const card = (children, extra = {}) => (
-    <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.07)", ...extra }}>
-      {children}
-    </div>
-  );
-
-  const infoCard = (icon, title, desc) => (
-    <div key={title} style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: "16px 20px", marginBottom: 12 }}>
-      <h4 style={{ margin: 0, fontWeight: 700, color: "#111827", fontSize: 15 }}>{icon} {title}</h4>
-      <p style={{ margin: "6px 0 0", color: "#6b7280", fontSize: 14 }}>{desc}</p>
-    </div>
-  );
-
   return (
-    <div style={{ display: "flex", minHeight: "100vh", fontFamily: "Outfit, sans-serif", background: "#f3f4f6" }}>
+    <div style={{ ...s, display: "flex", minHeight: "100vh", background: "#f3f4f6" }}>
 
       {/* Sidebar */}
-      <aside style={{ width: 220, background: "#fff", borderRight: "1px solid #e5e7eb", padding: "28px 20px", display: "flex", flexDirection: "column", gap: 24, position: "fixed", height: "100vh" }}>
+      <aside style={{ width: 220, background: "#fff", borderRight: "1px solid #e5e7eb", padding: "28px 20px", display: "flex", flexDirection: "column", gap: 24, position: "fixed", height: "100vh", overflowY: "auto" }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 18, color: "#4f46e5" }}>
             <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#7c3aed", display: "inline-block" }}></span>
@@ -138,15 +146,10 @@ export default function App() {
         </div>
         <nav style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {NAV.map(n => (
-            <button key={n} onClick={() => setActive(n)} style={{
-              textAlign: "left", padding: "8px 12px", borderRadius: 8, fontSize: 14, fontWeight: 500,
-              background: active === n ? "#ede9fe" : "transparent",
-              color: active === n ? "#4f46e5" : "#6b7280",
-              border: "none", cursor: "pointer", fontFamily: "Outfit, sans-serif"
-            }}>{n}</button>
+            <button key={n} onClick={() => setActive(n)} style={{ ...s, textAlign: "left", padding: "8px 12px", borderRadius: 8, fontSize: 13, fontWeight: 500, background: active === n ? "#ede9fe" : "transparent", color: active === n ? "#4f46e5" : "#6b7280", border: "none", cursor: "pointer" }}>{n}</button>
           ))}
         </nav>
-        <button onClick={() => { setData(null); setUsername(""); }} style={{ marginTop: "auto", fontSize: 12, color: "#9ca3af", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>← Analyze another</button>
+        <button onClick={() => { setData(null); setUsername(""); }} style={{ ...s, marginTop: "auto", fontSize: 12, color: "#9ca3af", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>← Analyze another</button>
       </aside>
 
       {/* Main */}
@@ -159,104 +162,51 @@ export default function App() {
         </div>
 
         {/* Dashboard */}
-        {active === "Dashboard" && (
-          <>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-
-              {/* Overview */}
-              {card(<>
-                <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 700 }}>Overview</h3>
-                {[
-                  { label: "Consistency Score", value: `${data.skills?.[0]?.confidence || 78}%` },
-                  { label: "Confidence Score", value: `${data.skills?.[1]?.confidence || 72}%` },
-                  { label: "Public Repos", value: g.public_repos },
-                  { label: "Followers", value: g.followers },
-                ].map((m, i) => (
-                  <div key={i} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 16px", marginBottom: 10 }}>
-                    <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>{m.label}</p>
-                    <p style={{ margin: "4px 0 0", fontSize: 22, fontWeight: 700, color: "#4f46e5" }}>{m.value}</p>
-                  </div>
-                ))}
-                <div style={{ background: "#f9fafb", borderRadius: 10, padding: "12px 16px", marginTop: 4 }}>
-                  <p style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>Why this matters</p>
-                  <p style={{ margin: "6px 0 0", fontSize: 13, color: "#6b7280" }}>{g.bio || "Your GitHub activity reveals more about you than any resume."}</p>
-                </div>
-              </>)}
-
-              {/* Radar */}
-              {card(<>
-                <h3 style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 700 }}>Skill Radar</h3>
-                <p style={{ margin: "0 0 16px", fontSize: 13, color: "#9ca3af" }}>Based on commit frequency, session depth, and task completion patterns.</p>
-                <Radar data={radarData} options={{
-                  scales: {
-                    r: {
-                      beginAtZero: true,
-                      max: 100,
-                      ticks: { stepSize: 20, display: false },
-                      grid: { circular: true, color: 'rgba(0,0,0,0.1)' },
-                      angleLines: { color: 'rgba(0,0,0,0.1)', lineWidth: 1 }
-                    }
-                  },
-                  plugins: { legend: { display: false } },
-                  elements: {
-                    line: { tension: 0.1 },
-                    point: { radius: 4, hoverRadius: 6 }
-                  }
-                }} />
-              </>)}
-
-              {/* Bar Chart */}
-              {card(<>
-                <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 700 }}>Activity Overview (Last 7 Days)</h3>
-                <Bar data={barData} options={{ plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }} />
-              </>)}
-
-              {/* Badges compact */}
-              {card(<>
-                <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 700 }}>Badges Earned</h3>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                  {BADGES.slice(0, 4).map((b, i) => (
-                    <div key={i} style={{ background: "#f5f3ff", borderRadius: 12, padding: 16, textAlign: "center" }}>
-                      <div style={{ fontSize: 28 }}>{b.icon}</div>
-                      <p style={{ margin: "8px 0 0", fontWeight: 700, fontSize: 13 }}>{b.title}</p>
-                    </div>
-                  ))}
-                </div>
-              </>)}
-            </div>
-
-            {/* Recent Commits */}
+        {active === "Dashboard" && (<>
+          <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, padding: "12px 20px", marginBottom: 20, color: "#166534", fontSize: 14 }}>
+            💡 {data.summary}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
             {card(<>
-              <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 700 }}>Recent Commits</h3>
-              <p style={{ margin: "0 0 16px", fontSize: 13, color: "#9ca3af" }}>Latest commit messages across your repositories</p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {g.commit_summary?.recent_commits?.slice(0, 5).map((commit, i) => (
-                  <div key={i} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: "14px 16px", background: "#f9fafb" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <div style={{ width: 24, height: 24, borderRadius: "50%", background: "#4f46e5", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: 12, fontWeight: "bold" }}>
-                          {i + 1}
-                        </div>
-                        <span style={{ fontWeight: 600, fontSize: 14, color: "#111827" }}>{commit.repo}</span>
-                      </div>
-                      <a href={commit.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "#7c3aed", textDecoration: "none", fontWeight: 500 }}>
-                        View →
-                      </a>
-                    </div>
-                    <p style={{ margin: 0, fontSize: 13, color: "#6b7280", lineHeight: 1.5 }}>
-                      {commit.message}
-                    </p>
+              <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 700 }}>Overview</h3>
+              {[
+                { label: "Consistency Score", value: `${data.skills?.[0]?.confidence || 78}%` },
+                { label: "Confidence Score", value: `${data.skills?.[1]?.confidence || 72}%` },
+                { label: "Public Repos", value: g.public_repos },
+                { label: "Followers", value: g.followers },
+              ].map((m, i) => (
+                <div key={i} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 16px", marginBottom: 10 }}>
+                  <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>{m.label}</p>
+                  <p style={{ margin: "4px 0 0", fontSize: 22, fontWeight: 700, color: "#4f46e5" }}>{m.value}</p>
+                </div>
+              ))}
+              <div style={{ background: "#f9fafb", borderRadius: 10, padding: "12px 16px" }}>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>Why this matters</p>
+                <p style={{ margin: "6px 0 0", fontSize: 13, color: "#6b7280" }}>{g.bio || "Your GitHub activity reveals more about you than any resume."}</p>
+              </div>
+            </>)}
+            {card(<>
+              <h3 style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 700 }}>Skill Radar</h3>
+              <p style={{ margin: "0 0 16px", fontSize: 13, color: "#9ca3af" }}>Based on commit frequency, session depth, and task completion patterns.</p>
+              <Radar data={radarData} options={{ scales: { r: { beginAtZero: true, max: 100 } }, plugins: { legend: { display: false } } }} />
+            </>)}
+            {card(<>
+              <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 700 }}>Activity Overview (Last 7 Days)</h3>
+              <Bar data={barData} options={{ plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }} />
+            </>)}
+            {card(<>
+              <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 700 }}>Badges Earned</h3>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                {BADGES.slice(0, 4).map((b, i) => (
+                  <div key={i} style={{ background: "#f5f3ff", borderRadius: 12, padding: 16, textAlign: "center" }}>
+                    <div style={{ fontSize: 28 }}>{b.icon}</div>
+                    <p style={{ margin: "8px 0 0", fontWeight: 700, fontSize: 13 }}>{b.title}</p>
                   </div>
                 ))}
-                {(!g.commit_summary?.recent_commits || g.commit_summary.recent_commits.length === 0) && (
-                  <div style={{ textAlign: "center", padding: "24px", color: "#9ca3af", fontSize: 14 }}>
-                    No recent commits found
-                  </div>
-                )}
               </div>
-            </>, { marginTop: 20 })}
-          </>
-        )}
+            </>)}
+          </div>
+        </>)}
 
         {/* Projects */}
         {active === "Projects" && card(<>
@@ -266,215 +216,41 @@ export default function App() {
 
         {/* Insights */}
         {active === "Insights" && card(<>
-          <h3 style={{ margin: "0 0 16px", fontSize: 18, fontWeight: 700 }}>Performance Insights</h3>
-          <p style={{ margin: "0 0 24px", fontSize: 14, color: "#6b7280" }}>
-            Based on your GitHub activity analysis, here are your key strengths and areas for growth.
-          </p>
-          
-          {/* Strengths Section */}
-          <div style={{ marginBottom: 32 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-              <div style={{ width: 24, height: 24, borderRadius: "50%", background: "linear-gradient(135deg, #10b981, #34d399)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: 12, fontWeight: "bold" }}>
-                ✓
-              </div>
-              <h4 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#111827" }}>Your Strengths</h4>
-              <span style={{ background: "#d1fae5", color: "#065f46", fontSize: 12, fontWeight: 600, padding: "2px 8px", borderRadius: 12 }}>
-                {data.hidden_strengths?.length || 0} identified
-              </span>
-            </div>
-            
-            {data.hidden_strengths?.length > 0 ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {data.hidden_strengths.map((strength, i) => {
-                  const strengthIcons = ["🌟", "💪", "🚀", "🎯", "⚡", "🏆"];
-                  const categories = ["Technical Excellence", "Consistency", "Problem Solving", "Collaboration", "Innovation", "Leadership"];
-                  const category = categories[i % categories.length];
-                  const icon = strengthIcons[i % strengthIcons.length];
-                  
-                  return (
-                    <div key={i} style={{
-                      border: "1px solid #d1fae5",
-                      borderRadius: 12,
-                      padding: "20px",
-                      background: "#f0fdf4",
-                      position: "relative"
-                    }}>
-                      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                        <div style={{ fontSize: 24 }}>{icon}</div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                            <h5 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#111827" }}>
-                              {category} • Strength #{i + 1}
-                            </h5>
-                            <span style={{
-                              background: "#10b981",
-                              color: "white",
-                              fontSize: 11,
-                              fontWeight: 700,
-                              padding: "2px 8px",
-                              borderRadius: 10
-                            }}>
-                              HIGH IMPACT
-                            </span>
-                          </div>
-                          <p style={{ margin: "0 0 12px", fontSize: 14, color: "#374151", lineHeight: 1.5 }}>
-                            {strength}
-                          </p>
-                          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              <div style={{ width: 80, height: 6, background: "#d1fae5", borderRadius: 3, overflow: "hidden" }}>
-                                <div style={{
-                                  width: `${70 + (i * 10)}%`,
-                                  height: "100%",
-                                  background: "#10b981",
-                                  borderRadius: 3
-                                }}></div>
-                              </div>
-                              <span style={{ fontSize: 12, color: "#6b7280" }}>Performance</span>
-                            </div>
-                            <div style={{ fontSize: 12, color: "#6b7280", background: "#f9fafb", padding: "4px 8px", borderRadius: 6 }}>
-                              💡 Leverage this in your next project
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div style={{ textAlign: "center", padding: "32px", background: "#f9fafb", borderRadius: 12, border: "1px dashed #d1d5db" }}>
-                <div style={{ fontSize: 32, marginBottom: 12 }}>📊</div>
-                <p style={{ margin: 0, fontSize: 14, color: "#6b7280" }}>No strength data available. Analyze more activity to uncover your strengths.</p>
-              </div>
-            )}
-          </div>
-          
-          {/* Blind Spots Section */}
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-              <div style={{ width: 24, height: 24, borderRadius: "50%", background: "linear-gradient(135deg, #f59e0b, #fbbf24)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: 12, fontWeight: "bold" }}>
-                !
-              </div>
-              <h4 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#111827" }}>Growth Opportunities</h4>
-              <span style={{ background: "#fef3c7", color: "#92400e", fontSize: 12, fontWeight: 600, padding: "2px 8px", borderRadius: 12 }}>
-                {data.blind_spots?.length || 0} areas to improve
-              </span>
-            </div>
-            
-            {data.blind_spots?.length > 0 ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {data.blind_spots.map((spot, i) => {
-                  const spotIcons = ["⚠️", "🔍", "🎯", "📈", "🔄", "🧠"];
-                  const categories = ["Skill Gap", "Consistency", "Documentation", "Testing", "Collaboration", "Innovation"];
-                  const category = categories[i % categories.length];
-                  const icon = spotIcons[i % spotIcons.length];
-                  
-                  return (
-                    <div key={i} style={{
-                      border: "1px solid #fef3c7",
-                      borderRadius: 12,
-                      padding: "20px",
-                      background: "#fffbeb",
-                      position: "relative"
-                    }}>
-                      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                        <div style={{ fontSize: 24 }}>{icon}</div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                            <h5 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#111827" }}>
-                              {category} • Opportunity #{i + 1}
-                            </h5>
-                            <span style={{
-                              background: "#f59e0b",
-                              color: "white",
-                              fontSize: 11,
-                              fontWeight: 700,
-                              padding: "2px 8px",
-                              borderRadius: 10
-                            }}>
-                              GROWTH AREA
-                            </span>
-                          </div>
-                          <p style={{ margin: "0 0 12px", fontSize: 14, color: "#374151", lineHeight: 1.5 }}>
-                            {spot}
-                          </p>
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                <div style={{ width: 80, height: 6, background: "#fef3c7", borderRadius: 3, overflow: "hidden" }}>
-                                  <div style={{
-                                    width: `${30 + (i * 15)}%`,
-                                    height: "100%",
-                                    background: "#f59e0b",
-                                    borderRadius: 3
-                                  }}></div>
-                                </div>
-                                <span style={{ fontSize: 12, color: "#6b7280" }}>Improvement needed</span>
-                              </div>
-                            </div>
-                            <div style={{ fontSize: 12, color: "#92400e", background: "#fef3c7", padding: "6px 12px", borderRadius: 6, fontWeight: 600 }}>
-                              🎯 Action: Focus here for 30 days
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div style={{ textAlign: "center", padding: "32px", background: "#f9fafb", borderRadius: 12, border: "1px dashed #d1d5db" }}>
-                <div style={{ fontSize: 32, marginBottom: 12 }}>🎉</div>
-                <p style={{ margin: 0, fontSize: 14, color: "#6b7280" }}>No blind spots detected! Your profile shows balanced development across all areas.</p>
-              </div>
-            )}
-          </div>
-          
-          {/* Summary Card */}
-          <div style={{
-            marginTop: 32,
-            background: "linear-gradient(135deg, #4f46e5, #7c3aed)",
-            borderRadius: 16,
-            padding: "24px",
-            color: "white"
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-              <div style={{ fontSize: 24 }}>📈</div>
-              <h5 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Performance Summary</h5>
-            </div>
-            <p style={{ margin: "0 0 16px", fontSize: 14, opacity: 0.9, lineHeight: 1.5 }}>
-              {data.summary || "Your GitHub activity reveals a strong foundation with specific areas for targeted growth."}
-            </p>
-            <div style={{ display: "flex", gap: 16, fontSize: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#10b981" }}></div>
-                <span>Strengths: {data.hidden_strengths?.length || 0}</span>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#f59e0b" }}></div>
-                <span>Growth areas: {data.blind_spots?.length || 0}</span>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#8b5cf6" }}></div>
-                <span>Skills: {data.skills?.length || 0}</span>
-              </div>
-            </div>
-          </div>
+          <h3 style={{ margin: "0 0 16px", fontSize: 18, fontWeight: 700 }}>Insights</h3>
+          {data.hidden_strengths?.map((s, i) => infoCard(["🌟", "💡", "🚀"][i] || "✨", `Strength #${i + 1}`, s))}
+          {data.blind_spots?.map((s, i) => infoCard("⚠️", `Blind Spot #${i + 1}`, s))}
         </>)}
 
         {/* Activity */}
         {active === "Activity" && card(<>
           <h3 style={{ margin: "0 0 16px", fontSize: 18, fontWeight: 700 }}>Activity</h3>
-          {infoCard("📝", "Today", `${g.public_repos} public repositories detected. Commit activity analyzed across all repos.`)}
-          {infoCard("📈", "Last 7 Days", `${g.followers} developers follow this profile. Strong network presence detected.`)}
-          {infoCard("🛡️", "Code Health", `Top language: ${g.repos?.[0]?.language || "Not detected"}. Consistent patterns found across repos.`)}
+          {infoCard("📝", "Recent Commits", `${g.commit_summary?.commit_count || 0} commits analyzed across all public repos.`)}
+          {g.commit_summary?.recent_commits?.map((c, i) => (
+            <div key={i} style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: "12px 16px", marginBottom: 10 }}>
+              <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: "#4f46e5" }}>📦 {c.repo}</p>
+              <p style={{ margin: "4px 0 0", fontSize: 13, color: "#374151" }}>{c.message?.slice(0, 120)}</p>
+              {c.timestamp && <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>{new Date(c.timestamp).toLocaleString()}</p>}
+            </div>
+          ))}
         </>)}
 
         {/* Career */}
         {active === "Career Suggestions" && card(<>
           <h3 style={{ margin: "0 0 16px", fontSize: 18, fontWeight: 700 }}>Career Suggestions</h3>
-          {data.career_roles?.map((r, i) => infoCard(["🎯", "🧠", "🚀"][i] || "💼", r, "This role matches your behavioral patterns and GitHub activity."))}
+          {data.career_roles?.map((r, i) => (
+            <div key={i} style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: "16px 20px", marginBottom: 12 }}>
+              <h4 style={{ margin: 0, fontWeight: 700, fontSize: 15 }}>{["🎯", "🧠", "🚀"][i]} {r}</h4>
+              <p style={{ margin: "6px 0 8px", color: "#6b7280", fontSize: 14 }}>This role matches your behavioral patterns and GitHub activity.</p>
+              <a href={`https://unstop.com/jobs?searchTerm=${encodeURIComponent(r)}`} target="_blank" rel="noreferrer"
+                style={{ display: "inline-block", padding: "6px 16px", background: "#4f46e5", color: "#fff", borderRadius: 8, fontSize: 13, fontWeight: 600, textDecoration: "none", marginRight: 8 }}>
+                🔍 Find Jobs on Unstop
+              </a>
+              <a href={`https://unstop.com/internships?searchTerm=${encodeURIComponent(r)}`} target="_blank" rel="noreferrer"
+                style={{ display: "inline-block", padding: "6px 16px", background: "#7c3aed", color: "#fff", borderRadius: 8, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
+                🎓 Find Internships
+              </a>
+            </div>
+          ))}
         </>)}
 
         {/* Badges */}
@@ -489,6 +265,74 @@ export default function App() {
               </div>
             ))}
           </div>
+        </>)}
+
+        {/* Time Breaker */}
+        {active === "Time Breaker" && card(<>
+          <h3 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 700 }}>⚡ Time Breaker</h3>
+          <p style={{ margin: "0 0 16px", fontSize: 13, color: "#9ca3af" }}>Top 5 fastest consecutive commits — shows your speed and momentum.</p>
+          {data.time_breaker?.length ? data.time_breaker.map((t, i) => (
+            <div key={i} style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: "14px 18px", marginBottom: 12, display: "flex", alignItems: "center", gap: 16 }}>
+              <div style={{ fontSize: 28, fontWeight: 800, color: "#4f46e5", minWidth: 36 }}>#{t.rank}</div>
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: "#111827" }}>{t.message}</p>
+                <p style={{ margin: "4px 0 0", fontSize: 12, color: "#9ca3af" }}>📦 {t.repo} · {new Date(t.committed_at).toLocaleString()}</p>
+              </div>
+              <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "6px 14px", textAlign: "center" }}>
+                <p style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#16a34a" }}>{t.gap_minutes}m</p>
+                <p style={{ margin: 0, fontSize: 11, color: "#6b7280" }}>gap</p>
+              </div>
+            </div>
+          )) : <p style={{ color: "#9ca3af" }}>No time breaker data available for this user.</p>}
+        </>)}
+
+        {/* Cron Status */}
+        {active === "Cron Status" && (<>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
+            {card(<>
+              <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 700 }}>🕐 Scheduler Info</h3>
+              {cronStatus ? (<>
+                {[
+                  { label: "Scheduler Running", value: cronStatus.scheduler_running ? "✅ Yes" : "❌ No" },
+                  { label: "Interval", value: `Every ${cronStatus.interval_hours} hours` },
+                  { label: "Tracked Users", value: cronStatus.tracked_user_count },
+                  { label: "Next Run", value: cronStatus.jobs?.[0]?.next_run ? new Date(cronStatus.jobs[0].next_run).toLocaleString() : "N/A" },
+                ].map((m, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid #f3f4f6" }}>
+                    <span style={{ color: "#6b7280", fontSize: 14 }}>{m.label}</span>
+                    <span style={{ fontWeight: 700, fontSize: 14 }}>{m.value}</span>
+                  </div>
+                ))}
+                <button onClick={triggerCron} style={{ ...s, marginTop: 16, width: "100%", padding: "10px", background: "#4f46e5", color: "#fff", borderRadius: 10, fontWeight: 700, border: "none", cursor: "pointer", fontSize: 14 }}>
+                  ▶️ Trigger Cron Now
+                </button>
+                {triggerMsg && <p style={{ color: "#16a34a", textAlign: "center", marginTop: 8, fontSize: 13 }}>{triggerMsg}</p>}
+              </>) : <p style={{ color: "#9ca3af" }}>Loading...</p>}
+            </>)}
+            {card(<>
+              <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 700 }}>👥 Tracked Users</h3>
+              {Object.keys(trackedUsers).length ? Object.entries(trackedUsers).map(([u, meta], i) => (
+                <div key={i} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: "10px 14px", marginBottom: 10 }}>
+                  <p style={{ margin: 0, fontWeight: 700, color: "#4f46e5" }}>@{u}</p>
+                  <p style={{ margin: "4px 0 0", fontSize: 12, color: "#9ca3af" }}>Added: {new Date(meta.added_at).toLocaleString()}</p>
+                </div>
+              )) : <p style={{ color: "#9ca3af", fontSize: 14 }}>No users tracked yet. Analyze a user to start tracking.</p>}
+            </>)}
+          </div>
+          {card(<>
+            <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 700 }}>📋 Cron Logs</h3>
+            {cronLogs.length ? [...cronLogs].reverse().map((log, i) => (
+              <div key={i} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 16px", marginBottom: 12 }}>
+                <p style={{ margin: "0 0 8px", fontWeight: 700, fontSize: 13, color: "#374151" }}>🕐 {new Date(log.run_at).toLocaleString()}</p>
+                {log.results?.map((r, j) => (
+                  <div key={j} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "4px 0", borderBottom: "1px solid #f9fafb" }}>
+                    <span>@{r.username}</span>
+                    <span style={{ color: r.status === "ok" ? "#16a34a" : "#ef4444" }}>{r.status === "ok" ? "✅ Success" : `❌ ${r.error}`}</span>
+                  </div>
+                ))}
+              </div>
+            )) : <p style={{ color: "#9ca3af", fontSize: 14 }}>No cron runs yet. Trigger one above!</p>}
+          </>)}
         </>)}
 
       </main>
